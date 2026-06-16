@@ -1,0 +1,13 @@
+[
+  {"name": "term", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "aliases", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "definition", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "source_system", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "agent_name", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "table_name", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "field_name", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "filters", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "related_terms", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "category", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "calculation", "type": "STRING", "mode": "NULLABLE"}
+]

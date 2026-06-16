@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  oracle-db:
+    image: gvenzl/oracle-free:latest
+    container_name: kaplan-oracle
+    ports:
+      - "1521:1521"
+    environment:
+      - ORACLE_PASSWORD=kanaka04
+      - APP_USER=kanaka
+      - APP_USER_PASSWORD=kaplan04
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+
+  mssql-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: kaplan-mssql
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=Kaplan@04
+    volumes:
+      - mssql_data:/var/opt/mssql
+
+volumes:
+  oracle_data:
+  mssql_data:

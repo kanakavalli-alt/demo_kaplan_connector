@@ -1,0 +1,4 @@
+google-adk>=0.3.0
+python-dotenv
+mcp
+google-cloud-bigquery
