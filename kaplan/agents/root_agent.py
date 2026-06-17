@@ -481,6 +481,26 @@ Always convert to Q[N]_YYYY format before delegating:
 WORKFLOW
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TERM NORMALIZATION — before calling lookup_fp_and_a_term:
+
+IMPORTANT: Distinguish between METRICS (need lookup) and DIMENSIONS (don't need lookup).
+Dimensions are grouping/breakdown attributes already included in a metric's table —
+they do NOT require their own lookup_fp_and_a_term call.
+
+Common dimension words that should NOT trigger separate lookups:
+  "by channel", "by marketing channel", "by vertical", "by school", "by degree",
+  "by campus", "by segment", "by military category", "broken down by X",
+  "grouped by X", "split by X"
+
+When a query says "[metric] by [dimension]" or "[metric] grouped by [dimension]":
+  1. Look up ONLY the metric (e.g., "new starts")
+  2. Pass the dimension as a GROUP BY instruction to the routing context
+  3. Do NOT call lookup_fp_and_a_term for the dimension itself
+
+Example:
+  "new starts grouped by marketing channel and vertical"
+  → lookup_fp_and_a_term("new starts") only
+  → Add to routing context: "GROUP BY: marketingChannelGroup, Vertical"
+
   Map user language to semantic layer terms:
   "closed won pipeline"    → look up "closed won revenue" AND "pipeline"
   "actual revenue"         → look up "revenue"
@@ -519,13 +539,13 @@ STEP 2 — Look up EVERY metric in the semantic layer
 STEP 3 — Build routing context packet
   Compile all semantic layer results into one clear packet:
 
-    PERIOD ASSUMPTION: Q{_pq}_{_py} vs Q{_pq}_{_ppy} (YoY — no period specified)
+    PERIOD ASSUMPTION: [period]
 
     ROUTING CONTEXT (from semantic layer):
     • [term] → agents_to_call: [list] | category_type: [type]
-               is_multi_source: [true/false]
                table: [table].[field] | filters: [filters]
                calculation: [operation] | formula_logic: [logic]
+               GROUP BY: [any dimensions mentioned in the question, e.g. marketingChannelGroup, Vertical]
 
     CALCULATION NEEDED: [what bi_agent should compute]
 
