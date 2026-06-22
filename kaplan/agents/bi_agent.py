@@ -391,7 +391,7 @@ from agents.source_agents import (
     redshift_agent,
 )
 
-# ParallelAgent owns ALL source agents — single parent satisfied
+
 bi_sequential = SequentialAgent(
     name="bi_sequential",
     description="Sequential data fetcher — runs source agents one at a time.",

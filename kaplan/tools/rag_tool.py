@@ -415,16 +415,6 @@
 # tools/rag_tool.py
 """
 Semantic layer lookup for the Kaplan FP&A Analytics Agent.
-
-Changes from previous version:
-  1. BigQuery is now the PRIMARY path (Vertex AI Search removed — Discovery
-     Engine connector type never copied Salesforce data to GCP).
-  2. INTENT_MAP is a thin fast-path cache only.  All real normalisation is
-     done by BigQuery alias matching, which you already updated via bq UPDATE.
-  3. agent_name is returned as a Python list so bi_agent can split it without
-     string-parsing (e.g. "oracle_agent,redshift_agent" → ["oracle_agent","redshift_agent"]).
-  4. category_type field added ("Identity" | "Causal/Influential") derived from
-     the BQ category column so agent instructions work correctly.
 """
 
 import os
@@ -568,7 +558,7 @@ def lookup_fp_and_a_term(term: str) -> dict:
                 use_cases,
                 formula_logic,
                 open_questions
-            FROM `robust-atrium-406105.kaplan_semantic_layer.kaplan_metrics`
+            FROM `robust-atrium-406105.kaplan_semantic_layer.kaplan_metrics_new`
             WHERE
                 -- Exact match on canonical term (highest priority)
                 LOWER(term) = LOWER(@term)
