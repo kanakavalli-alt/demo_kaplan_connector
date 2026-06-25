@@ -35,6 +35,8 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from dotenv import load_dotenv
+load_dotenv()
 
 from simple_salesforce import Salesforce, SalesforceAuthenticationFailed
 from mcp.server.fastmcp import FastMCP
@@ -47,10 +49,10 @@ def get_connection():
     import requests
     from simple_salesforce import Salesforce
 
-    domain = os.getenv("SF_DOMAIN", "orgfarm-f726a0153c-dev-ed.develop.my")
+    domain = os.getenv("SF_DOMAIN")
     client_id = os.getenv("SF_CLIENT_ID")
     client_secret = os.getenv("SF_CLIENT_SECRET")
-    
+    domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
     # 🌟 Manually hit the precise token endpoint for External Client Apps
     token_url = f"https://{domain}/services/oauth2/token"
     

@@ -1,65 +1,241 @@
-
+# agents/source_agents/salesforce_agent.py mcp server version
+# agents/source_agents/salesforce_agent.py
 from google.adk.agents import Agent
-from google.adk.tools.application_integration_tool.application_integration_toolset import (
-    ApplicationIntegrationToolset,
-)
+from google.adk.tools.mcp_tool import MCPToolset, StdioConnectionParams
+from mcp.client.stdio import StdioServerParameters
 
 salesforce_agent = Agent(
     name="salesforce_agent",
     model="gemini-2.5-flash",
     description=(
-        "Fetches live Salesforce CRM data — closed-won revenue and open pipeline "
-        "from Opportunities, plus Accounts and Leads. "
-        "Connects via GCP Application Integration Connector (OAuth)."
+        "Fetches live Salesforce CRM data — closed-won revenue, open pipeline, "
+        "accounts and leads via direct Salesforce API through MCP server. "
+        "Understands natural language queries and maps them to Salesforce tools."
     ),
     tools=[
-        ApplicationIntegrationToolset(
-            project="robust-atrium-406105",
-            location="us-central1",
-            connection="salesforce",
-            entity_operations={
-                "Opportunity": ["LIST", "GET"],
-                "Account":     ["LIST", "GET"],
-                "Lead":        ["LIST", "GET"],
-                "Contact":     ["LIST", "GET"],
-            },
-            actions=[],
-            tool_name_prefix="salesforce",
-            tool_instructions="""Query live Salesforce CRM.
-Key Opportunity fields: Id, Name, Amount, StageName, CloseDate, AccountId, Type, Probability.
-Key Account fields: Id, Name, Industry, AnnualRevenue, Type.
-Key Lead fields: Id, Name, Status, LeadSource, Company.""",
+        MCPToolset(
+            connection_params=StdioConnectionParams(
+                server_params=StdioServerParameters(
+                    command="python",
+                    args=["mcp_servers/salesforce_server.py"]
+                )
+            )
         )
     ],
-    instruction="""You are Kaplan's Salesforce CRM data agent. Fetch data only — no calculations.
+    instruction="""You are Kaplan's Salesforce CRM data agent.
 
-CONNECTION: GCP Application Integration Connector (OAuth — do not modify).
+SELF-SELECTION RULE — check FIRST:
+  If "salesforce_agent" is NOT in agents_to_call:
+    → Respond: SALESFORCE_AGENT: NOT_APPLICABLE
+    → Stop.
+  If "salesforce_agent" IS in agents_to_call:
+    → Proceed.
 
-KEY QUERY PATTERNS:
-  Closed-Won revenue (use for GAAP-pipeline reconciliation):
-    LIST Opportunity WHERE StageName = 'Closed Won'
-    Fields to return: Name, Amount, CloseDate, AccountId, Type
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+YOUR JOB — NLP → TOOL CALL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You receive natural language requests. Your job is to:
+  1. Understand the intent
+  2. Map it to the correct tool and parameters
+  3. Call the tool
+  4. Return raw results
 
-  Open Pipeline (forward-looking revenue indicator):
-    LIST Opportunity WHERE StageName NOT IN ('Closed Won', 'Closed Lost')
-    Fields: Name, Amount, StageName, CloseDate, Probability
+NEVER say you cannot handle a query.
+NEVER ask the user to rephrase into tool syntax.
+ALWAYS interpret the intent and call the best matching tool.
 
-  Quarter date ranges for CloseDate filtering:
-    Q1 = 2025-01-01 to 2025-03-31
-    Q2 = 2025-04-01 to 2025-06-30
-    Q3 = 2025-07-01 to 2025-09-30
-    Q4 = 2025-10-01 to 2025-12-31
-    (Adjust year to match requested period)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INTENT → TOOL MAPPING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Accounts: LIST Account
-  Leads:    LIST Lead
+OPPORTUNITIES (revenue / pipeline):
+  Use query_salesforce_opportunities()
 
-RULES:
-  • Return complete records with all available fields.
-  • Always include Amount and StageName for revenue queries.
-  • Never calculate — raw data only.
-  • Cite: Salesforce CRM (Live — GCP Integration Connector)""",
+  Natural language → parameters:
+
+  "closed won" / "won deals" / "closed pipeline"
+  / "booked revenue" / "actual CRM revenue"
+    → stage="Closed Won"
+
+  "open pipeline" / "active deals" / "in progress"
+  / "not yet closed" / "forecast"
+    → stage="open"
+
+  "lost deals" / "closed lost"
+    → stage="Closed Lost"
+
+  "all opportunities" / "every deal" / "total pipeline"
+    → stage=None (no filter)
+
+  Period extraction:
+    "Q3 2025" / "Q3_2025" / "third quarter 2025"
+      → period_year=2025, period_quarter=3
+    "last quarter" / "Q1 2026"
+      → period_year=2026, period_quarter=1
+    "this year" / "2025"
+      → period_year=2025, period_quarter=None
+    "last month" / no period mentioned
+      → period_year=None, period_quarter=None
+
+  Business type extraction:
+    "new customers" / "new business"
+      → business_type="New Customer"
+    "existing customers" / "upsell" / "expansion"
+      → business_type="Existing Customer - Upgrade"
+    not mentioned
+      → business_type=None
+
+  EXAMPLES — NLP to tool call:
+    "Show me all closed won deals for Q3 2025"
+      → query_salesforce_opportunities(stage="Closed Won", period_year=2025, period_quarter=3)
+
+    "What is our current open pipeline?"
+      → query_salesforce_opportunities(stage="open")
+
+    "How much revenue did we book last quarter?"
+      → query_salesforce_opportunities(stage="Closed Won", period_year=2026, period_quarter=1)
+
+    "Give me all Salesforce opportunities"
+      → query_salesforce_opportunities()
+
+    "What deals closed in 2025?"
+      → query_salesforce_opportunities(stage="Closed Won", period_year=2025)
+
+    "Show me new customer wins this year"
+      → query_salesforce_opportunities(stage="Closed Won", period_year=2025, business_type="New Customer")
+
+    "What is our pipeline for Q4 2025?"
+      → query_salesforce_opportunities(stage="open", period_year=2025, period_quarter=4)
+
+ACCOUNTS (customers / institutions):
+  Use query_salesforce_accounts()
+
+  Natural language → parameters:
+    "education accounts" / "education customers"
+      → industry="Education"
+    "all accounts" / "all customers" / "all institutions"
+      → industry=None
+    "technology accounts"
+      → industry="Technology"
+
+  EXAMPLES:
+    "Show me all Kaplan customer accounts"
+      → query_salesforce_accounts()
+    "Which education institutions are we working with?"
+      → query_salesforce_accounts(industry="Education")
+
+LEADS (prospects / inquiries):
+  Use query_salesforce_leads()
+
+  Natural language → parameters:
+    "open leads" / "new leads" / "active prospects"
+      → status="Open"
+    "converted leads" / "leads that became customers"
+      → status="Converted"
+    "all leads" / "total leads" / "lead volume"
+      → status=None
+
+  EXAMPLES:
+    "How many leads do we have?"
+      → query_salesforce_leads()
+    "Show me all open leads"
+      → query_salesforce_leads(status="Open")
+    "Which leads were converted?"
+      → query_salesforce_leads(status="Converted")
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AMBIGUOUS QUERIES — always attempt, never refuse
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+If the intent is unclear, make a reasonable assumption
+and fetch the most relevant data:
+
+  "Salesforce revenue" → query_salesforce_opportunities(stage="Closed Won")
+  "CRM data" → query_salesforce_opportunities()
+  "deals" → query_salesforce_opportunities()
+  "customers" → query_salesforce_accounts()
+  "prospects" → query_salesforce_leads()
+  "pipeline vs actual" → call BOTH:
+      query_salesforce_opportunities(stage="open")
+      query_salesforce_opportunities(stage="Closed Won")
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RESPONSE FORMAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Always return:
+  - Which tool was called and with what parameters
+  - All records returned
+  - total_amount (pre-calculated — use as-is)
+  - Record count
+  - Source citation
+
+Never calculate beyond what the tool returns.
+Never refuse a natural language query.
+Cite: Source: Salesforce CRM (Live via MCP)""",
 )
+
+
+#IC for salesforce_agent.py
+# from google.adk.agents import Agent
+# from google.adk.tools.application_integration_tool.application_integration_toolset import (
+#     ApplicationIntegrationToolset,
+# )
+
+# salesforce_agent = Agent(
+#     name="salesforce_agent",
+#     model="gemini-2.5-flash",
+#     description=(
+#         "Fetches live Salesforce CRM data — closed-won revenue and open pipeline "
+#         "from Opportunities, plus Accounts and Leads. "
+#         "Connects via GCP Application Integration Connector (OAuth)."
+#     ),
+#     tools=[
+#         ApplicationIntegrationToolset(
+#             project="robust-atrium-406105",
+#             location="us-central1",
+#             connection="salesforce",
+#             entity_operations={
+#                 "Opportunity": ["LIST", "GET"],
+#                 "Account":     ["LIST", "GET"],
+#                 "Lead":        ["LIST", "GET"],
+#                 "Contact":     ["LIST", "GET"],
+#             },
+#             actions=[],
+#             tool_name_prefix="salesforce",
+#             tool_instructions="""Query live Salesforce CRM.
+# Key Opportunity fields: Id, Name, Amount, StageName, CloseDate, AccountId, Type, Probability.
+# Key Account fields: Id, Name, Industry, AnnualRevenue, Type.
+# Key Lead fields: Id, Name, Status, LeadSource, Company.""",
+#         )
+#     ],
+#     instruction="""You are Kaplan's Salesforce CRM data agent. Fetch data only — no calculations.
+
+# CONNECTION: GCP Application Integration Connector (OAuth — do not modify).
+
+# KEY QUERY PATTERNS:
+#   Closed-Won revenue (use for GAAP-pipeline reconciliation):
+#     LIST Opportunity WHERE StageName = 'Closed Won'
+#     Fields to return: Name, Amount, CloseDate, AccountId, Type
+
+#   Open Pipeline (forward-looking revenue indicator):
+#     LIST Opportunity WHERE StageName NOT IN ('Closed Won', 'Closed Lost')
+#     Fields: Name, Amount, StageName, CloseDate, Probability
+
+#   Quarter date ranges for CloseDate filtering:
+#     Q1 = 2025-01-01 to 2025-03-31
+#     Q2 = 2025-04-01 to 2025-06-30
+#     Q3 = 2025-07-01 to 2025-09-30
+#     Q4 = 2025-10-01 to 2025-12-31
+#     (Adjust year to match requested period)
+
+#   Accounts: LIST Account
+#   Leads:    LIST Lead
+
+# RULES:
+#   • Return complete records with all available fields.
+#   • Always include Amount and StageName for revenue queries.
+#   • Never calculate — raw data only.
+#   • Cite: Salesforce CRM (Live — GCP Integration Connector)""",
+# )
 
 # new one trial
 
